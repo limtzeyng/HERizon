@@ -29,6 +29,8 @@ Instructions on setting up:
 * They communicate via vibrations.
 * Different vibration patterns are mapped to different meaning. 
 
+## Architecture Diagram
+
 ```mermaid
 flowchart LR
 
@@ -47,13 +49,13 @@ flowchart LR
     H[Haptics Layer<br/>Vibrator / Wristband Interface]
   end
 
-  B -- "POST /api/send" --> S
-  B -- "GET /api/status" --> S
+  B -- POST /api/send --> S
+  B -- GET /api/status --> S
 
-  A -- "GET /api/poll" --> S
-  S -- "JSON event" --> A
+  A -- GET /api/poll --> S
+  S -- JSON event --> A
 
-  A -- "POST /api/response" --> S
+  A -- POST /api/response --> S
 
   S --> Q
   S --> L
@@ -62,3 +64,4 @@ flowchart LR
 
   N1[[Same WiFi / Hotspot<br/>Use http://&lt;laptop-ip&gt;:&lt;port&gt;]] --- B
   N1 --- A
+```
