@@ -1,0 +1,29 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Allow vibration -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <!-- Allow phone ↔ laptop communication -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application
+        android:label="URIDemo"
+        android:icon="@mipmap/ic_launcher"
+        android:theme="@style/Theme.URIDemo"
+        android:usesCleartextTraffic="true">
+
+    <activity
+            android:name=".MainActivity"
+            android:exported="true">
+
+            <!-- App launcher entry point -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+        </activity>
+
+    </application>
+
+</manifest>
