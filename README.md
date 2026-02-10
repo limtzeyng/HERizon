@@ -20,4 +20,11 @@ Instructions on setting up:
 10. Allow changes to be made and drag down the notifications that pop up, tap on it to set up and select "Transfer files".
 11. Run the code for "server.py" and copy the second address to the "MainActivity" file under the "App" window.
 12. Open the first address in your browser. A dashboard will pop up.
-13.  
+13. Return to "WIT version 1" window and check that the Android Phone is connected properly. (Show up at the top of the window)
+14. Run "WIT version 1". The app will be installed in the Android Phone.
+
+ How it works:
+> The dashboard can send events to the Android Phone.
+> The Android Phone can be interacted with and will send responses to the dashboard.
+> They communicate via vibrations.
+> Different vibration patterns are mapped to different meaning. 
