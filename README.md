@@ -28,3 +28,39 @@ Instructions on setting up:
 * The Android Phone can be interacted with and will send responses to the dashboard.
 * They communicate via vibrations.
 * Different vibration patterns are mapped to different meaning. 
+
+flowchart LR
+  %% HERizon / Universal Response Interface - High-level architecture
+
+  subgraph Operator["Operator / Caregiver (Laptop)"]
+    B[Web Browser\nDemo Dashboard]
+  end
+
+  subgraph Backend["Backend (Laptop)"]
+    S[Flask Server\nuri-demo/server.py]
+    Q[(Event Queue\nFIFO deque)]
+    L[(Responses Log\nlatest-first deque)]
+  end
+
+  subgraph Mobile["User (Android Phone)"]
+    A[Android App\nKotlin + Compose]
+    H[Haptics Layer\nVibrator / Wristband bridge]
+  end
+
+  %% Flows
+  B -- "POST /api/send\n(event)" --> S
+  S --> Q
+
+  A -- "GET /api/poll\n(next event)" --> S
+  Q --> S
+  S -- "JSON event" --> A
+  A --> H
+
+  A -- "POST /api/response\n(code,label,user)" --> S
+  S --> L
+  B -- "GET /api/status\n(latest_event, queue_size, responses)" --> S
+  L --> S
+
+  %% Notes
+  N1[[Same Wi-Fi / hotspot\nLaptop reachable via <laptop-ip>:<port>]] --- B
+  N1 --- A
