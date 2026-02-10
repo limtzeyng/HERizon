@@ -24,7 +24,7 @@ Instructions on setting up:
 14. Run "WIT version 1". The app will be installed in the Android Phone.
 
  How it works:
-> The dashboard can send events to the Android Phone.
-> The Android Phone can be interacted with and will send responses to the dashboard.
-> They communicate via vibrations.
-> Different vibration patterns are mapped to different meaning. 
+* The dashboard can send events to the Android Phone.
+* The Android Phone can be interacted with and will send responses to the dashboard.
+* They communicate via vibrations.
+* Different vibration patterns are mapped to different meaning. 
