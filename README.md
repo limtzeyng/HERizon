@@ -30,40 +30,5 @@ Instructions on setting up:
 * Different vibration patterns are mapped to different meaning. 
 
 ## Architecture Diagram
+<img width="7457" height="3612" alt="Diagram" src="https://github.com/user-attachments/assets/1b3d508f-8868-4306-b6bb-04d0d39e93b5" />
 
-## Architecture Diagram
-
-```mermaid
-flowchart LR
-
-  subgraph Operator[Operator and Caregiver Laptop]
-    B[Web Dashboard (Browser)]
-  end
-
-  subgraph Backend[Backend Laptop]
-    S[Flask Server<br/>uri-demo/server.py]
-    Q[(Event Queue<br/>FIFO deque)]
-    L[(Responses Log<br/>latest-first deque)]
-  end
-
-  subgraph Mobile[Android Phone User]
-    A[Android App<br/>Kotlin + Jetpack Compose]
-    H[Haptics Layer<br/>Vibrator or Wristband Interface]
-  end
-
-  B -- POST api/send --> S
-  B -- GET api/status --> S
-
-  A -- GET api/poll --> S
-  S -- JSON event --> A
-
-  A -- POST api/response --> S
-
-  S --> Q
-  S --> L
-  Q --> S
-  L --> S
-
-  N1[[Same WiFi or Hotspot<br/>Use http://&lt;laptop-ip&gt;:&lt;port&gt;]] --- B
-  N1 --- A
-```
