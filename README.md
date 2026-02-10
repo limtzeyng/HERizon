@@ -29,38 +29,27 @@ Instructions on setting up:
 * They communicate via vibrations.
 * Different vibration patterns are mapped to different meaning. 
 
-flowchart LR
-  %% HERizon / Universal Response Interface - High-level architecture
++---------------------------+                      +----------------------------+
+|  Laptop (Operator)        |                      |  Android Phone (User)      |
+|  Web Browser Dashboard     |                      |  Android App (Compose)     |
+|  - buttons send events     |                      |  - polls for events        |
+|  - shows latest + logs     |                      |  - triggers haptics        |
++-------------+-------------+                      +--------------+-------------+
+              |                                                    |
+              | POST /api/send (event)                             | GET /api/poll
+              v                                                    v
+        +----------------------------+                    +----------------------+
+        | Flask Server (Backend)     |<-------------------| returns next event   |
+        | uri-demo/server.py         |------------------->| (JSON)               |
+        | - routes: send/poll/status |                    +----------+-----------+
+        | - stores queues/logs       |                               |
+        +------+---------------------+                               v
+               |                                             +------------------+
+               | appends                                      | Haptics Layer    |
+               v                                             | Vibrator/Wristband|
+     +-----------------------+                                +------------------+
+     | Event Queue (FIFO)    |
+     +-----------------------+
 
-  subgraph Operator["Operator / Caregiver (Laptop)"]
-    B[Web Browser\nDemo Dashboard]
-  end
-
-  subgraph Backend["Backend (Laptop)"]
-    S[Flask Server\nuri-demo/server.py]
-    Q[(Event Queue\nFIFO deque)]
-    L[(Responses Log\nlatest-first deque)]
-  end
-
-  subgraph Mobile["User (Android Phone)"]
-    A[Android App\nKotlin + Compose]
-    H[Haptics Layer\nVibrator / Wristband bridge]
-  end
-
-  %% Flows
-  B -- "POST /api/send\n(event)" --> S
-  S --> Q
-
-  A -- "GET /api/poll\n(next event)" --> S
-  Q --> S
-  S -- "JSON event" --> A
-  A --> H
-
-  A -- "POST /api/response\n(code,label,user)" --> S
-  S --> L
-  B -- "GET /api/status\n(latest_event, queue_size, responses)" --> S
-  L --> S
-
-  %% Notes
-  N1[[Same Wi-Fi / hotspot\nLaptop reachable via <laptop-ip>:<port>]] --- B
-  N1 --- A
+Phone -> Server: POST /api/response (code,label,user)
+Dashboard -> Server: GET /api/status (latest_event, queue_size, responses)
