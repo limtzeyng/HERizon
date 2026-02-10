@@ -29,34 +29,35 @@ Instructions on setting up:
 * They communicate via vibrations.
 * Different vibration patterns are mapped to different meaning. 
 
-```mermaid
 flowchart LR
-  subgraph Operator["Operator / Caregiver (Laptop)"]
+
+  subgraph Operator[Operator / Caregiver (Laptop)]
     B[Web Dashboard (Browser)]
   end
 
-  subgraph Backend["Backend (Laptop)"]
-    S[Flask Server\nuri-demo/server.py]
-    Q[(Event Queue\nFIFO deque)]
-    L[(Responses Log\nlatest-first deque)]
+  subgraph Backend[Backend (Laptop)]
+    S[Flask Server<br/>uri-demo/server.py]
+    Q[(Event Queue<br/>FIFO deque)]
+    L[(Responses Log<br/>latest-first deque)]
   end
 
-  subgraph Mobile["User (Android Phone)"]
-    A[Android App\nKotlin + Jetpack Compose]
-    H[Haptics Layer\nVibrator / Wristband Interface]
+  subgraph Mobile[User (Android Phone)]
+    A[Android App<br/>Kotlin + Jetpack Compose]
+    H[Haptics Layer<br/>Vibrator / Wristband Interface]
   end
 
-  B -- "POST /api/send (event)" --> S
-  B -- "GET /api/status" --> S
+  B -- POST /api/send --> S
+  B -- GET /api/status --> S
 
-  A -- "GET /api/poll" --> S
-  S -- "JSON event" --> A
-  A -- "POST /api/response (code,label,user)" --> S
+  A -- GET /api/poll --> S
+  S -- JSON event --> A
+
+  A -- POST /api/response --> S
 
   S --> Q
   S --> L
   Q --> S
   L --> S
 
-  N1[[Same Wi-Fi / Hotspot\nUse http://<laptop-ip>:<port>]] --- B
+  N1[[Same WiFi / Hotspot<br/>Use http://&lt;laptop-ip&gt;:&lt;port&gt;]] --- B
   N1 --- A
