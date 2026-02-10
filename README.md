@@ -1,6 +1,6 @@
 Hello! We are a team of 5 women working on a project for Women-in-Tech Hackathon Track 1. 
 
-This project focuses on using haptics for ease of communication for people with disabilities. We hope that this brings more convenience to them.
+This project focuses on using haptics for ease of communication for people with disabilities. HERizon LinkBand is a wearable-assisted mobile system designed to help users discreetly receive and respond to important cues in real-world environments. The system combines an Android app with a Flask backend to deliver reliable event-based communication, supporting accessibility, safety, and inclusive interaction. We hope that this brings more convenience to them.
 
 Devices:
 1. 1 working Laptop
