@@ -31,37 +31,39 @@ Instructions on setting up:
 
 ## Architecture Diagram
 
+## Architecture Diagram
+
 ```mermaid
 flowchart LR
 
-  subgraph Operator[Operator / Caregiver (Laptop)]
+  subgraph Operator[Operator and Caregiver Laptop]
     B[Web Dashboard (Browser)]
   end
 
-  subgraph Backend[Backend (Laptop)]
+  subgraph Backend[Backend Laptop]
     S[Flask Server<br/>uri-demo/server.py]
     Q[(Event Queue<br/>FIFO deque)]
     L[(Responses Log<br/>latest-first deque)]
   end
 
-  subgraph Mobile[User (Android Phone)]
+  subgraph Mobile[Android Phone User]
     A[Android App<br/>Kotlin + Jetpack Compose]
-    H[Haptics Layer<br/>Vibrator / Wristband Interface]
+    H[Haptics Layer<br/>Vibrator or Wristband Interface]
   end
 
-  B -- POST /api/send --> S
-  B -- GET /api/status --> S
+  B -- POST api/send --> S
+  B -- GET api/status --> S
 
-  A -- GET /api/poll --> S
+  A -- GET api/poll --> S
   S -- JSON event --> A
 
-  A -- POST /api/response --> S
+  A -- POST api/response --> S
 
   S --> Q
   S --> L
   Q --> S
   L --> S
 
-  N1[[Same WiFi / Hotspot<br/>Use http://&lt;laptop-ip&gt;:&lt;port&gt;]] --- B
+  N1[[Same WiFi or Hotspot<br/>Use http://&lt;laptop-ip&gt;:&lt;port&gt;]] --- B
   N1 --- A
 ```
