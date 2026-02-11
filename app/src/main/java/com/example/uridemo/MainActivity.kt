@@ -11,9 +11,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -28,29 +28,36 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
-import kotlin.math.abs
 
 class MainActivity : ComponentActivity() {
 
     companion object {
         private const val PREFS_NAME = "uri_demo_prefs"
         private const val PREF_DEVICE_ROLE = "device_role"
+        private const val PREF_CUSTOM_MESSAGE = "custom_message"
+        private const val PREF_CUSTOM_PATTERN = "custom_pattern"
+
         private const val ROLE_ALL = "ALL"
         private const val ROLE_LEFT = "LEFT"
         private const val ROLE_RIGHT = "RIGHT"
+
+        private const val CUSTOM_PATTERN_TAP_3 = "TAP_3"
+        private const val CUSTOM_PATTERN_TAP_4 = "TAP_4"
+        private const val CUSTOM_PATTERN_SQUEEZE_2S = "SQUEEZE_2S"
     }
 
     data class PollResult(
         val event: String?,
         val taskText: String?,
         val taskId: String?,
+        val eventId: String?,
         val debug: String
     )
 
     data class TaskItem(
         val id: String,
         val text: String,
-        val completed: Boolean
+        var completed: Boolean
     )
 
     // ✅ CHANGE THIS to the IP printed by Flask
@@ -76,13 +83,17 @@ class MainActivity : ComponentActivity() {
     private fun playHapticForEvent(event: String) {
         when (event) {
             "NAME_CALLED" -> vibratePattern(longArrayOf(0, 200, 120, 200))
+
             "TASK_ASSIGNED" -> vibratePattern(longArrayOf(0, 180, 100, 180, 100, 180))
+
             "URGENT" -> vibratePattern(
                 longArrayOf(
-                    0, 120, 80, 120, 80, 120, 80, 120, 80, 120, 80, 120, 80, 120,
-                    80, 120, 80, 120, 80, 120, 80, 120, 80, 120
+                    0, 120, 80, 120, 80, 120, 80, 120,
+                    80, 120, 80, 120, 80, 120, 80, 120,
+                    80, 120, 80, 120, 80, 120, 80, 120
                 )
             )
+
             else -> vibratePattern(longArrayOf(0, 250))
         }
     }
@@ -95,6 +106,15 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun normalizeCustomPattern(pattern: String): String {
+        return when (pattern.uppercase()) {
+            CUSTOM_PATTERN_TAP_3 -> CUSTOM_PATTERN_TAP_3
+            CUSTOM_PATTERN_TAP_4 -> CUSTOM_PATTERN_TAP_4
+            CUSTOM_PATTERN_SQUEEZE_2S -> CUSTOM_PATTERN_SQUEEZE_2S
+            else -> CUSTOM_PATTERN_TAP_3
+        }
+    }
+
     private fun loadRole(): String {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         return normalizeRole(prefs.getString(PREF_DEVICE_ROLE, ROLE_ALL) ?: ROLE_ALL)
@@ -103,6 +123,29 @@ class MainActivity : ComponentActivity() {
     private fun saveRole(role: String) {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().putString(PREF_DEVICE_ROLE, normalizeRole(role)).apply()
+    }
+
+    private fun loadCustomMessage(): String {
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getString(
+            PREF_CUSTOM_MESSAGE,
+            "Please slow down, thank you!"
+        ) ?: "Please slow down, thank you!"
+    }
+
+    private fun loadCustomPattern(): String {
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return normalizeCustomPattern(
+            prefs.getString(PREF_CUSTOM_PATTERN, CUSTOM_PATTERN_TAP_3) ?: CUSTOM_PATTERN_TAP_3
+        )
+    }
+
+    private fun saveCustomConfig(message: String, pattern: String) {
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit()
+            .putString(PREF_CUSTOM_MESSAGE, message)
+            .putString(PREF_CUSTOM_PATTERN, normalizeCustomPattern(pattern))
+            .apply()
     }
 
     // ---------- NETWORK: POLL EVENTS ----------
@@ -120,21 +163,32 @@ class MainActivity : ComponentActivity() {
             val body = conn.inputStream.bufferedReader().readText()
 
             val json = JSONObject(body)
+
             val rawEvent = json.optString("event", null)
             val cleanEv = if (rawEvent == "null" || rawEvent.isNullOrBlank()) null else rawEvent
+
             val rawTask = json.optString("task_text", null)
             val cleanTask = if (rawTask == "null" || rawTask.isNullOrBlank()) null else rawTask
+
             val rawTaskId = json.optString("task_id", null)
             val cleanTaskId = if (rawTaskId == "null" || rawTaskId.isNullOrBlank()) null else rawTaskId
 
-            PollResult(cleanEv, cleanTask, cleanTaskId, "HTTP $code")
+            val rawEventId = json.optString("event_id", null)
+            val cleanEventId = if (rawEventId == "null" || rawEventId.isNullOrBlank()) null else rawEventId
+
+            PollResult(cleanEv, cleanTask, cleanTaskId, cleanEventId, "HTTP $code")
         } catch (e: Exception) {
-            PollResult(null, null, null, "ERROR: ${e.javaClass.simpleName}")
+            PollResult(null, null, null, null, "ERROR: ${e.javaClass.simpleName}")
         }
     }
 
     // ---------- NETWORK: SEND RESPONSE ----------
-    private suspend fun sendResponse(code: String, label: String, role: String) = withContext(Dispatchers.IO) {
+    private suspend fun sendResponse(
+        code: String,
+        label: String,
+        role: String,
+        customPattern: String? = null
+    ) = withContext(Dispatchers.IO) {
         try {
             val url = URL("$serverBase/api/response")
             val conn = (url.openConnection() as HttpURLConnection).apply {
@@ -150,6 +204,9 @@ class MainActivity : ComponentActivity() {
                 put("label", label)
                 put("user", "Phone user")
                 put("role", normalizeRole(role))
+                if (!customPattern.isNullOrBlank()) {
+                    put("custom_pattern", customPattern)
+                }
             }
 
             conn.outputStream.use { it.write(payload.toString().toByteArray()) }
@@ -170,71 +227,121 @@ class MainActivity : ComponentActivity() {
                 var status by remember { mutableStateOf("Server: $serverBase") }
                 var lastEvent by remember { mutableStateOf("Last event: None") }
                 var lastSent by remember { mutableStateOf("Last response: None") }
+
+                var customMessageInput by remember { mutableStateOf(loadCustomMessage()) }
+                var selectedCustomPattern by remember { mutableStateOf(loadCustomPattern()) }
+
                 val taskItems = remember { mutableStateListOf<TaskItem>() }
+                var lastProcessedEventKey by remember { mutableStateOf<String?>(null) }
+                var lastProcessedEventAt by remember { mutableStateOf(0L) }
+
+                fun ingestPollResult(result: PollResult) {
+                    if (result.event != null) {
+                        val suffix = if (result.taskText != null) " | Task: ${result.taskText}" else ""
+                        lastEvent = "Last event: ${result.event}$suffix"
+
+                        val fallbackKey = "${result.event}|${result.taskText ?: ""}"
+                        val incomingKey = result.eventId ?: fallbackKey
+                        val now = SystemClock.elapsedRealtime()
+
+                        val shouldPlay = if (result.eventId != null) {
+                            incomingKey != lastProcessedEventKey
+                        } else {
+                            !(incomingKey == lastProcessedEventKey && now - lastProcessedEventAt < 2000)
+                        }
+
+                        if (shouldPlay) {
+                            playHapticForEvent(result.event)
+                            lastProcessedEventKey = incomingKey
+                            lastProcessedEventAt = now
+                        }
+
+                        if (result.event == "TASK_ASSIGNED" && !result.taskText.isNullOrBlank()) {
+                            val generatedId = result.taskId ?: "task-${SystemClock.elapsedRealtime()}"
+                            val exists = taskItems.any { it.id == generatedId }
+                            if (!exists) {
+                                taskItems.add(
+                                    TaskItem(
+                                        id = generatedId,
+                                        text = result.taskText,
+                                        completed = false
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
 
                 // ---------- AUTO POLL LOOP ----------
                 LaunchedEffect(selectedRole) {
                     while (true) {
                         val result = pollEventOnce(selectedRole)
                         status = "Status: ${result.debug} | Role: $selectedRole"
-
-                        if (result.event != null) {
-                            val suffix = if (result.taskText != null) " | Task: ${result.taskText}" else ""
-                            lastEvent = "Last event: ${result.event}$suffix"
-                            playHapticForEvent(result.event)
-
-                            if (result.event == "TASK_ASSIGNED" && !result.taskText.isNullOrBlank()) {
-                                val generatedId = result.taskId ?: "task-${SystemClock.elapsedRealtime()}"
-                                val exists = taskItems.any { it.id == generatedId }
-                                if (!exists) {
-                                    taskItems.add(TaskItem(id = generatedId, text = result.taskText, completed = false))
-                                }
-                            }
-                        }
-
+                        ingestPollResult(result)
                         delay(700)
                     }
                 }
 
-                // ---------- TAP LOGIC (single vs double) ----------
+                // ---------- TAP LOGIC (supports custom 3/4 tap) ----------
                 var tapCount by remember { mutableStateOf(0) }
-                var firstTapTime by remember { mutableStateOf(0L) }
+                var tapSequenceId by remember { mutableStateOf(0) }
                 var lastTapTime by remember { mutableStateOf(0L) }
 
-                fun send(code: String, label: String) {
+                fun send(code: String, label: String, customPattern: String? = null) {
                     lastSent = "Last response: $label"
-                    scope.launch { sendResponse(code, label, selectedRole) }
+                    scope.launch { sendResponse(code, label, selectedRole, customPattern) }
                     vibratePattern(longArrayOf(0, 60))
+                }
+
+                fun sendCustomResponse() {
+                    val msg = customMessageInput.trim().ifBlank { "Custom response" }
+                    send("CUSTOM_PATTERN_RESPONSE", msg, selectedCustomPattern)
+                }
+
+                fun resolveTapSequence() {
+                    when (tapCount) {
+                        1 -> send("YES_SINGLE_TAP", "Acknowledge / Yes")
+                        2 -> send("NO_DOUBLE_TAP", "No / can’t comply")
+                        3 -> {
+                            if (selectedCustomPattern == CUSTOM_PATTERN_TAP_3) {
+                                sendCustomResponse()
+                            } else {
+                                lastSent = "Last response: No action mapped for 3 taps"
+                            }
+                        }
+                        4 -> {
+                            if (selectedCustomPattern == CUSTOM_PATTERN_TAP_4) {
+                                sendCustomResponse()
+                            } else {
+                                lastSent = "Last response: No action mapped for 4 taps"
+                            }
+                        }
+                        else -> {
+                            lastSent = "Last response: Unmapped tap pattern ($tapCount taps)"
+                        }
+                    }
+                    tapCount = 0
                 }
 
                 fun registerTap() {
                     val now = SystemClock.elapsedRealtime()
-
                     if (tapCount == 0) {
-                        tapCount = 1
-                        firstTapTime = now
-                        lastTapTime = now
+                        tapSequenceId += 1
+                    }
 
-                        scope.launch {
-                            delay(350)
-                            if (tapCount == 1 && abs(SystemClock.elapsedRealtime() - lastTapTime) >= 300) {
-                                send("YES_SINGLE_TAP", "Acknowledge / Yes")
-                                tapCount = 0
-                            }
+                    tapCount += 1
+                    lastTapTime = now
+                    val currentSequence = tapSequenceId
+
+                    scope.launch {
+                        delay(450)
+                        val elapsed = SystemClock.elapsedRealtime() - lastTapTime
+                        if (currentSequence == tapSequenceId && elapsed >= 380 && tapCount > 0) {
+                            resolveTapSequence()
                         }
-                    } else {
-                        if (now - firstTapTime <= 400) {
-                            tapCount = 0
-                            send("NO_DOUBLE_TAP", "No / can’t comply")
-                        } else {
-                            tapCount = 1
-                            firstTapTime = now
-                        }
-                        lastTapTime = now
                     }
                 }
 
-                // ---------- UI ----------
                 Surface(modifier = Modifier.fillMaxSize()) {
                     Column(
                         modifier = Modifier
@@ -247,9 +354,20 @@ class MainActivity : ComponentActivity() {
                         Text("This phone role: $selectedRole", fontSize = 12.sp)
 
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Button(onClick = { selectedRole = ROLE_LEFT; saveRole(selectedRole) }) { Text("Set LEFT") }
-                            Button(onClick = { selectedRole = ROLE_RIGHT; saveRole(selectedRole) }) { Text("Set RIGHT") }
-                            Button(onClick = { selectedRole = ROLE_ALL; saveRole(selectedRole) }) { Text("Set GENERAL") }
+                            Button(onClick = {
+                                selectedRole = ROLE_LEFT
+                                saveRole(selectedRole)
+                            }) { Text("Set LEFT") }
+
+                            Button(onClick = {
+                                selectedRole = ROLE_RIGHT
+                                saveRole(selectedRole)
+                            }) { Text("Set RIGHT") }
+
+                            Button(onClick = {
+                                selectedRole = ROLE_ALL
+                                saveRole(selectedRole)
+                            }) { Text("Set GENERAL") }
                         }
 
                         Text(status, fontSize = 12.sp)
@@ -263,24 +381,63 @@ class MainActivity : ComponentActivity() {
                             Button(onClick = {
                                 scope.launch {
                                     val result = pollEventOnce(selectedRole)
-                                    if (result.event != null) {
-                                        val suffix = if (result.taskText != null) " | Task: ${result.taskText}" else ""
-                                        lastEvent = "Last event: ${result.event}$suffix"
-                                        playHapticForEvent(result.event)
-
-                                        if (result.event == "TASK_ASSIGNED" && !result.taskText.isNullOrBlank()) {
-                                            val generatedId = result.taskId ?: "task-${SystemClock.elapsedRealtime()}"
-                                            val exists = taskItems.any { it.id == generatedId }
-                                            if (!exists) {
-                                                taskItems.add(TaskItem(id = generatedId, text = result.taskText, completed = false))
-                                            }
-                                        }
-                                    }
+                                    ingestPollResult(result)
                                 }
-                            }) { Text("Poll once") }
+                            }) {
+                                Text("Poll once")
+                            }
                         }
 
-                        Spacer(Modifier.height(8.dp))
+                        // ---------- CUSTOMISABLE RESPONSE ----------
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            Column(
+                                modifier = Modifier.padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text("Customise response", style = MaterialTheme.typography.titleMedium)
+
+                                OutlinedTextField(
+                                    value = customMessageInput,
+                                    onValueChange = { customMessageInput = it },
+                                    label = { Text("Custom message") },
+                                    placeholder = { Text("Please slow down, thank you!") },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+
+                                Text("Choose tap/hold pattern", fontSize = 12.sp)
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Button(onClick = { selectedCustomPattern = CUSTOM_PATTERN_TAP_3 }) {
+                                        Text("Tap 3x")
+                                    }
+                                    Button(onClick = { selectedCustomPattern = CUSTOM_PATTERN_TAP_4 }) {
+                                        Text("Tap 4x")
+                                    }
+                                    Button(onClick = { selectedCustomPattern = CUSTOM_PATTERN_SQUEEZE_2S }) {
+                                        Text("Squeeze 2s")
+                                    }
+                                }
+
+                                Text("Selected: $selectedCustomPattern", fontSize = 12.sp)
+                                if (selectedCustomPattern == CUSTOM_PATTERN_SQUEEZE_2S) {
+                                    Text(
+                                        "Squeeze detection is listed as an option for future wristband hardware support.",
+                                        fontSize = 12.sp
+                                    )
+                                }
+
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Button(onClick = {
+                                        saveCustomConfig(customMessageInput, selectedCustomPattern)
+                                        lastSent = "Last response: Custom mapping saved"
+                                    }) {
+                                        Text("Save mapping")
+                                    }
+                                    Button(onClick = { sendCustomResponse() }) {
+                                        Text("Send custom now")
+                                    }
+                                }
+                            }
+                        }
 
                         // ---------- TASK MANAGER ----------
                         Card(modifier = Modifier.fillMaxWidth()) {
@@ -336,16 +493,17 @@ class MainActivity : ComponentActivity() {
                                 .pointerInput(Unit) {
                                     awaitPointerEventScope {
                                         while (true) {
-                                            val down = awaitPointerEvent().changes.firstOrNull { it.pressed } ?: continue
+                                            val down =
+                                                awaitPointerEvent().changes.firstOrNull { it.pressed } ?: continue
                                             val trackedPointerId = down.id
                                             val downTime = SystemClock.elapsedRealtime()
 
-                                            // Wait until same finger released/cancelled
                                             while (true) {
                                                 val ev = awaitPointerEvent()
                                                 ev.changes.forEach { it.consume() }
 
-                                                val trackedChange = ev.changes.firstOrNull { it.id == trackedPointerId }
+                                                val trackedChange =
+                                                    ev.changes.firstOrNull { it.id == trackedPointerId }
                                                 val isReleased = trackedChange?.pressed == false
                                                 val isCancelled = trackedChange == null
                                                 if (isReleased || isCancelled) break
@@ -355,9 +513,15 @@ class MainActivity : ComponentActivity() {
                                             val duration = upTime - downTime
 
                                             when {
-                                                duration >= 5000 -> send("HELP_HOLD_5S", "Help / emergency")
-                                                duration >= 2000 -> send("REPEAT_HOLD_2S", "Repeat / clarify")
-                                                else -> registerTap()
+                                                duration >= 5000 -> {
+                                                    send("HELP_HOLD_5S", "Help / emergency")
+                                                }
+                                                duration >= 2000 -> {
+                                                    send("REPEAT_HOLD_2S", "Repeat / clarify")
+                                                }
+                                                else -> {
+                                                    registerTap()
+                                                }
                                             }
                                         }
                                     }
@@ -375,7 +539,8 @@ class MainActivity : ComponentActivity() {
                                     "• Single tap = Acknowledge / Yes\n" +
                                     "• Double tap = No / can’t comply\n" +
                                     "• Hold 2s = Repeat / clarify\n" +
-                                    "• Hold 5s = Help / emergency",
+                                    "• Hold 5s = Help / emergency\n" +
+                                    "• Custom mapping = Tap 3x or Tap 4x (based on saved setting)",
                             fontSize = 12.sp
                         )
                     }
