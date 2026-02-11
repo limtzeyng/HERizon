@@ -29,11 +29,18 @@ Instructions on setting up:
 * They communicate via vibrations.
 * Different vibration patterns are mapped to different meaning.
 
+## Features 
 Directional haptics:
 * Install the app on 2 Android phones.
 * In each app, set one phone as **LEFT** and the other as **RIGHT** using the role buttons.
 * On the dashboard, press **Send LEFT vibration** to vibrate only the LEFT phone, or **Send RIGHT vibration** to vibrate only the RIGHT phone.
 * Existing event buttons (name called / task assigned / urgent) continue to work as shared events.
+
+Task Manager:
+* On the dashboard, type a task (for example: "Please submit the report by 5pm.") and click **Send task to phone**.
+* The phone will receive the `TASK_ASSIGNED` event and vibrate using the task-assigned pattern.
+* The task will appear in the app's **Task Manager** checklist, where the user can tick tasks as done.
+* Use **Clear completed** in the app to remove finished tasks.
 
 ## Architecture Diagram
 <img width="7457" height="3612" alt="Diagram" src="https://github.com/user-attachments/assets/1b3d508f-8868-4306-b6bb-04d0d39e93b5" />
