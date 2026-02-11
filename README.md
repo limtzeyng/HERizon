@@ -4,7 +4,7 @@ This project focuses on using haptics for ease of communication for people with 
 
 Devices:
 1. 1 working Laptop
-2. 1 Android Phone (minimally)
+2. 1 Android Phone (minimally, 2 Phones to utilise directional haptics feature well)
 3. 1 Cable to connect said laptop and phone to transfer files
 
 Instructions on setting up:
