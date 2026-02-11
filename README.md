@@ -13,8 +13,8 @@ Instructions on setting up:
 3. On the Android Phone, go to Developer Options and turn on USB debugging (Make sure to authorise anything similar to this).
 4. Ensure that the Android Phone and the Laptop are connected to the same WIFI, preferably a private network (e.g., hotspot).
 5. Disable any firewalls for Python on the Laptop. (This may be preventing the code from running.)
-6. Download and open the file "server.py" on any IDE, such as Visual Studio Code.
-7. Download and open the folder "WIT version 1" on Android Studio.
+6. Download all the files in the repository and open the file "server.py" on any IDE, such as Visual Studio Code.
+7. Open the folder "WIT version 1" on Android Studio.
 8. Use the Cable to connect the laptop and phone.
 9. Allow changes to be made and drag down the notifications that pop up, tap on it to set up and select "Transfer files".
 10. Run the code for "server.py" and copy the second address to the "MainActivity" file under the app -> src -> main -> java -> example.
