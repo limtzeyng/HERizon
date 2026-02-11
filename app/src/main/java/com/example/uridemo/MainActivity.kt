@@ -30,8 +30,16 @@ import kotlin.math.abs
 
 class MainActivity : ComponentActivity() {
 
-    // ✅ CHANGE THIS to the IP printed by Flask
-    private val serverBase = "http://172.20.10.2:5002"
+    companion object {
+        private const val PREFS_NAME = "uri_demo_prefs"
+        private const val PREF_DEVICE_ROLE = "device_role"
+        private const val ROLE_ALL = "ALL"
+        private const val ROLE_LEFT = "LEFT"
+        private const val ROLE_RIGHT = "RIGHT"
+    }
+
+    // ✅ CHANGE THIS to the IP printed by Flask (NOT 127.0.0.1 on phone)
+    private val serverBase = "http://192.168.68.101:5002"
 
     // ---------- VIBRATION ----------
     private fun getVibrator(): Vibrator {
@@ -70,53 +78,75 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // ---------- NETWORK: POLL EVENTS ----------
-    private suspend fun pollEventOnce(): Pair<String?, String> = withContext(Dispatchers.IO) {
-        try {
-            val url = URL("$serverBase/api/poll")
-            val conn = (url.openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                connectTimeout = 2000
-                readTimeout = 2000
-            }
-
-            val code = conn.responseCode
-            val body = conn.inputStream.bufferedReader().readText()
-
-            val json = JSONObject(body)
-            val ev = json.optString("event", null)
-            val cleanEv = if (ev == "null" || ev.isNullOrBlank()) null else ev
-
-            Pair(cleanEv, "HTTP $code")
-        } catch (e: Exception) {
-            Pair(null, "ERROR: ${e.javaClass.simpleName}")
+    private fun normalizeRole(role: String): String {
+        return when (role.uppercase()) {
+            ROLE_LEFT -> ROLE_LEFT
+            ROLE_RIGHT -> ROLE_RIGHT
+            else -> ROLE_ALL
         }
     }
+
+    private fun loadRole(): String {
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return normalizeRole(prefs.getString(PREF_DEVICE_ROLE, ROLE_ALL) ?: ROLE_ALL)
+    }
+
+    private fun saveRole(role: String) {
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putString(PREF_DEVICE_ROLE, normalizeRole(role)).apply()
+    }
+
+    // ---------- NETWORK: POLL EVENTS ----------
+    private suspend fun pollEventOnce(role: String): Pair<String?, String> =
+        withContext(Dispatchers.IO) {
+            try {
+                val safeRole = normalizeRole(role)
+                val url = URL("$serverBase/api/poll?role=$safeRole")
+                val conn = (url.openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    connectTimeout = 2000
+                    readTimeout = 2000
+                }
+
+                val code = conn.responseCode
+                val body = conn.inputStream.bufferedReader().readText()
+
+                val json = JSONObject(body)
+                val ev = json.optString("event", null)
+                val cleanEv = if (ev == "null" || ev.isNullOrBlank()) null else ev
+
+                Pair(cleanEv, "HTTP $code")
+            } catch (e: Exception) {
+                Pair(null, "ERROR: ${e.javaClass.simpleName}")
+            }
+        }
 
     // ---------- NETWORK: SEND RESPONSE ----------
-    private suspend fun sendResponse(code: String, label: String) = withContext(Dispatchers.IO) {
-        try {
-            val url = URL("$serverBase/api/response")
-            val conn = (url.openConnection() as HttpURLConnection).apply {
-                requestMethod = "POST"
-                setRequestProperty("Content-Type", "application/json")
-                doOutput = true
-                connectTimeout = 2000
-                readTimeout = 2000
-            }
+    private suspend fun sendResponse(code: String, label: String, role: String) =
+        withContext(Dispatchers.IO) {
+            try {
+                val url = URL("$serverBase/api/response")
+                val conn = (url.openConnection() as HttpURLConnection).apply {
+                    requestMethod = "POST"
+                    setRequestProperty("Content-Type", "application/json")
+                    doOutput = true
+                    connectTimeout = 2000
+                    readTimeout = 2000
+                }
 
-            val payload = JSONObject().apply {
-                put("code", code)
-                put("label", label)
-                put("user", "Phone user")
-            }
+                val payload = JSONObject().apply {
+                    put("code", code)
+                    put("label", label)
+                    put("user", "Phone user")
+                    put("role", normalizeRole(role))
+                }
 
-            conn.outputStream.use { it.write(payload.toString().toByteArray()) }
-            conn.inputStream.close()
-        } catch (_: Exception) {
-            // keep silent for demo stability
+                conn.outputStream.use { it.write(payload.toString().toByteArray()) }
+                conn.inputStream.close()
+            } catch (_: Exception) {
+                // keep silent for demo stability
+            }
         }
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -125,15 +155,16 @@ class MainActivity : ComponentActivity() {
             MaterialTheme {
                 val scope = rememberCoroutineScope()
 
+                var selectedRole by remember { mutableStateOf(loadRole()) }
                 var status by remember { mutableStateOf("Server: $serverBase") }
                 var lastEvent by remember { mutableStateOf("Last event: None") }
                 var lastSent by remember { mutableStateOf("Last response: None") }
 
                 // ---------- AUTO POLL LOOP ----------
-                LaunchedEffect(Unit) {
+                LaunchedEffect(selectedRole) {
                     while (true) {
-                        val (ev, dbg) = pollEventOnce()
-                        status = "Status: $dbg"
+                        val (ev, dbg) = pollEventOnce(selectedRole)
+                        status = "Status: $dbg | Role: $selectedRole"
                         if (ev != null) {
                             lastEvent = "Last event: $ev"
                             playHapticForEvent(ev)
@@ -149,7 +180,7 @@ class MainActivity : ComponentActivity() {
 
                 fun send(code: String, label: String) {
                     lastSent = "Last response: $label"
-                    scope.launch { sendResponse(code, label) }
+                    scope.launch { sendResponse(code, label, selectedRole) }
                     // confirmation micro-buzz
                     vibratePattern(longArrayOf(0, 60))
                 }
@@ -194,6 +225,31 @@ class MainActivity : ComponentActivity() {
                         verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
                         Text("Universal Response Interface", fontSize = 20.sp)
+                        Text("This phone role: $selectedRole", fontSize = 12.sp)
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Button(
+                                onClick = {
+                                    selectedRole = ROLE_LEFT
+                                    saveRole(selectedRole)
+                                }
+                            ) { Text("Set LEFT") }
+
+                            Button(
+                                onClick = {
+                                    selectedRole = ROLE_RIGHT
+                                    saveRole(selectedRole)
+                                }
+                            ) { Text("Set RIGHT") }
+
+                            Button(
+                                onClick = {
+                                    selectedRole = ROLE_ALL
+                                    saveRole(selectedRole)
+                                }
+                            ) { Text("Set GENERAL") }
+                        }
+
                         Text(status, fontSize = 12.sp)
                         Text(lastEvent)
                         Text(lastSent)
@@ -204,7 +260,7 @@ class MainActivity : ComponentActivity() {
                             }
                             Button(onClick = {
                                 scope.launch {
-                                    val (ev, _) = pollEventOnce()
+                                    val (ev, _) = pollEventOnce(selectedRole)
                                     if (ev != null) {
                                         lastEvent = "Last event: $ev"
                                         playHapticForEvent(ev)
@@ -227,30 +283,39 @@ class MainActivity : ComponentActivity() {
                                 .pointerInput(Unit) {
                                     awaitPointerEventScope {
                                         while (true) {
-                                            val downChange = awaitPointerEvent().changes.firstOrNull { it.pressed }
-                                            if (downChange != null) {
-                                                val downTime = SystemClock.elapsedRealtime()
+                                            val down =
+                                                awaitPointerEvent().changes.firstOrNull { it.pressed }
+                                                    ?: continue
+                                            val trackedPointerId = down.id
+                                            val downTime = SystemClock.elapsedRealtime()
 
-                                                // Wait for release
-                                                while (downChange.pressed) {
-                                                    val ev = awaitPointerEvent()
-                                                    ev.changes.forEach { it.consume() }
-                                                    if (ev.changes.all { !it.pressed }) break
+                                            // Wait until the same finger is released/cancelled to avoid repeated triggers
+                                            while (true) {
+                                                val ev = awaitPointerEvent()
+                                                ev.changes.forEach { it.consume() }
+
+                                                val trackedChange =
+                                                    ev.changes.firstOrNull { it.id == trackedPointerId }
+                                                val isReleased = trackedChange?.pressed == false
+                                                val isCancelled = trackedChange == null
+
+                                                if (isReleased || isCancelled) break
+                                            }
+
+                                            val upTime = SystemClock.elapsedRealtime()
+                                            val duration = upTime - downTime
+
+                                            when {
+                                                duration >= 5000 -> {
+                                                    send("HELP_HOLD_5S", "Help / emergency")
                                                 }
 
-                                                val upTime = SystemClock.elapsedRealtime()
-                                                val duration = upTime - downTime
+                                                duration >= 2000 -> {
+                                                    send("REPEAT_HOLD_2S", "Repeat / clarify")
+                                                }
 
-                                                when {
-                                                    duration >= 5000 -> {
-                                                        send("HELP_HOLD_5S", "Help / emergency")
-                                                    }
-                                                    duration >= 2000 -> {
-                                                        send("REPEAT_HOLD_2S", "Repeat / clarify")
-                                                    }
-                                                    else -> {
-                                                        registerTap() // single/double logic
-                                                    }
+                                                else -> {
+                                                    registerTap() // single/double logic
                                                 }
                                             }
                                         }
