@@ -23,13 +23,13 @@ Instructions on setting up:
 13. Run "WIT version 1". The app will be installed in the Android Phone.
 14. Congrats! You can now unplug the cable and send events and responses to the dashboard on the Laptop and the app on the Android Phone.
 
- How it works:
+## Features 
+Core function:
 * The dashboard can send events to the Android Phone.
 * The Android Phone can be interacted with and will send responses to the dashboard.
 * They communicate via vibrations.
 * Different vibration patterns are mapped to different meaning.
 
-## Features 
 Directional haptics:
 * Install the app on 2 Android phones.
 * In each app, set one phone as **LEFT** and the other as **RIGHT** using the role buttons.
