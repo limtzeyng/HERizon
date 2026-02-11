@@ -10,18 +10,29 @@ ROLE_QUEUES = {
     "LEFT": deque(maxlen=50),
     "RIGHT": deque(maxlen=50),
 }
-LATEST_EVENT = {"event": None, "target": "ALL", "task_text": None}
+LATEST_EVENT = {"event": None, "target": "ALL"}
 
 # --- Responses coming back from phone (latest first) ---
 RESPONSES_LOG = deque(maxlen=30)
+
+# --- ID counters ---
 EVENT_COUNTER = 0
+TASK_COUNTER = 0
+
+
+def _now_ms() -> int:
+    return int(datetime.now().timestamp() * 1000)
 
 
 def make_event_packet(event: str, target: str = "ALL", task_text: str | None = None):
-    global EVENT_COUNTER
+    """
+    Packet format that your Android MainActivity expects:
+      event, task_text, task_id, event_id
+    """
+    global EVENT_COUNTER, TASK_COUNTER
     EVENT_COUNTER += 1
+    now_ms = _now_ms()
 
-    now_ms = int(datetime.now().timestamp() * 1000)
     packet = {
         "event": event,
         "target": target,
@@ -29,24 +40,12 @@ def make_event_packet(event: str, target: str = "ALL", task_text: str | None = N
         "task_id": None,
         "event_id": f"event-{now_ms}-{EVENT_COUNTER}",
     }
-    if packet["event"] == "TASK_ASSIGNED" and packet["task_text"]:
-        packet["task_id"] = f"task-{now_ms}-{EVENT_COUNTER}"
+
+    if event == "TASK_ASSIGNED" and packet["task_text"]:
+        TASK_COUNTER += 1
+        packet["task_id"] = f"task-{now_ms}-{TASK_COUNTER}"
+
     return packet
-
-
-def normalize_event_packet(raw_event, default_target="ALL"):
-    if isinstance(raw_event, dict):
-        packet = make_event_packet(
-            event=raw_event.get("event", ""),
-            target=str(raw_event.get("target", default_target)).upper(),
-            task_text=raw_event.get("task_text"),
-        )
-        packet["task_id"] = raw_event.get("task_id") or packet["task_id"]
-        packet["event_id"] = raw_event.get("event_id") or packet["event_id"]
-        return packet
-
-    # Backward compatibility for any old string entries still in memory
-    return make_event_packet(event=str(raw_event), target=default_target)
 
 
 HTML = """
@@ -138,6 +137,7 @@ async function sendTask() {
   const taskInput = document.getElementById('taskInput');
   const task = taskInput.value.trim();
   const target = document.getElementById('taskTarget').value;
+
   if (!task) {
     alert('Please type a task first.');
     return;
@@ -148,6 +148,7 @@ async function sendTask() {
     headers: {'Content-Type':'application/json'},
     body: JSON.stringify({event: 'TASK_ASSIGNED', task_text: task, target: target})
   });
+
   const data = await res.json();
   updateQueueUi(data);
 
@@ -173,18 +174,12 @@ async function refresh() {
   let latest = data.latest_event || 'None';
   if (data.latest_event) {
     latest = `${data.latest_event} (target=${data.latest_target || 'ALL'})`;
-    if (data.latest_task_text) {
-      latest += `\nTask: ${data.latest_task_text}`;
-    }
   }
   document.getElementById('latestEvent').textContent = latest;
 
   const logs = data.responses || [];
-  if (logs.length === 0) {
-    document.getElementById('responsesLog').textContent = 'No responses yet.';
-  } else {
-    document.getElementById('responsesLog').textContent = logs.join("\n");
-  }
+  document.getElementById('responsesLog').textContent =
+    logs.length ? logs.join("\\n") : 'No responses yet.';
 }
 
 setInterval(refresh, 700);
@@ -204,6 +199,7 @@ def home():
 @app.route("/api/send", methods=["POST"])
 def api_send():
     payload = request.get_json(silent=True) or {}
+
     ev = str(payload.get("event", "")).strip()
     target = str(payload.get("target", "ALL")).upper()
     task_text = payload.get("task_text")
@@ -214,15 +210,18 @@ def api_send():
     if target not in {"ALL", "LEFT", "RIGHT"}:
         return jsonify({"ok": False, "error": "Invalid target. Use ALL/LEFT/RIGHT"}), 400
 
-    packet = make_event_packet(event=ev, target=target, task_text=task_text)
+    # If user clicked TASK_ASSIGNED button without typing a task, just send a normal task vibration event
+    # (Phone won't add to task list unless task_text exists)
+    packet = make_event_packet(ev, target=target, task_text=task_text)
 
-    if ev == "TASK_ASSIGNED" and not packet["task_text"]:
+    # If it IS a task, enforce that task_text exists (so dashboard can't send empty tasks)
+    if ev == "TASK_ASSIGNED" and packet["task_text"] is None:
         return jsonify({"ok": False, "error": "task_text is required for TASK_ASSIGNED"}), 400
 
     LATEST_EVENT["event"] = packet["event"]
     LATEST_EVENT["target"] = packet["target"]
-    LATEST_EVENT["task_text"] = packet["task_text"]
 
+    # IMPORTANT: store PACKETS (dict) in queues, not strings
     if target == "ALL":
         EVENT_QUEUE.append(packet)
     else:
@@ -241,45 +240,39 @@ def api_send():
 def api_poll():
     role = str(request.args.get("role", "ALL")).upper()
 
+    def respond(packet):
+        return jsonify({
+            "event": packet.get("event"),
+            "task_text": packet.get("task_text"),
+            "task_id": packet.get("task_id"),
+            "event_id": packet.get("event_id"),
+        })
+
+    # 1) Role-specific queue first
     if role in ROLE_QUEUES and ROLE_QUEUES[role]:
-        packet = normalize_event_packet(ROLE_QUEUES[role].popleft(), role)
-        return jsonify({
-            "event": packet["event"],
-            "target": packet["target"],
-            "task_text": packet["task_text"],
-            "task_id": packet["task_id"],
-            "event_id": packet["event_id"],
-            "queue_size": len(EVENT_QUEUE),
-            "left_queue_size": len(ROLE_QUEUES["LEFT"]),
-            "right_queue_size": len(ROLE_QUEUES["RIGHT"]),
-        })
+        pkt = ROLE_QUEUES[role].popleft()
+        # Backward compatibility if any old string slips in
+        if not isinstance(pkt, dict):
+            pkt = make_event_packet(str(pkt), target=role)
+        return respond(pkt)
 
+    # 2) Then shared queue
     if EVENT_QUEUE:
-        packet = normalize_event_packet(EVENT_QUEUE.popleft(), "ALL")
-        return jsonify({
-            "event": packet["event"],
-            "target": packet["target"],
-            "task_text": packet["task_text"],
-            "task_id": packet["task_id"],
-            "event_id": packet["event_id"],
-            "queue_size": len(EVENT_QUEUE),
-            "left_queue_size": len(ROLE_QUEUES["LEFT"]),
-            "right_queue_size": len(ROLE_QUEUES["RIGHT"]),
-        })
+        pkt = EVENT_QUEUE.popleft()
+        if not isinstance(pkt, dict):
+            pkt = make_event_packet(str(pkt), target="ALL")
+        return respond(pkt)
 
+    # 3) Nothing
     return jsonify({
         "event": None,
-        "target": None,
         "task_text": None,
         "task_id": None,
         "event_id": None,
-        "queue_size": len(EVENT_QUEUE),
-        "left_queue_size": len(ROLE_QUEUES["LEFT"]),
-        "right_queue_size": len(ROLE_QUEUES["RIGHT"]),
     })
 
 
-# Phone -> dashboard: send response (Yes/No/Repeat/Help)
+# Phone -> dashboard: send response
 @app.route("/api/response", methods=["POST"])
 def api_response():
     payload = request.get_json(silent=True) or {}
@@ -307,13 +300,13 @@ def api_status():
     return jsonify({
         "latest_event": LATEST_EVENT.get("event"),
         "latest_target": LATEST_EVENT.get("target"),
-        "latest_task_text": LATEST_EVENT.get("task_text"),
         "queue_size": len(EVENT_QUEUE),
         "left_queue_size": len(ROLE_QUEUES["LEFT"]),
         "right_queue_size": len(ROLE_QUEUES["RIGHT"]),
-        "responses": list(RESPONSES_LOG)
+        "responses": list(RESPONSES_LOG),
     })
 
 
 if __name__ == "__main__":
+    # keep your port consistent with serverBase in MainActivity
     app.run(host="0.0.0.0", port=5002, debug=False)
