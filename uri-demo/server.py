@@ -14,27 +14,36 @@ LATEST_EVENT = {"event": None, "target": "ALL", "task_text": None}
 
 # --- Responses coming back from phone (latest first) ---
 RESPONSES_LOG = deque(maxlen=30)
+EVENT_COUNTER = 0
 
 
 def make_event_packet(event: str, target: str = "ALL", task_text: str | None = None):
+    global EVENT_COUNTER
+    EVENT_COUNTER += 1
+
+    now_ms = int(datetime.now().timestamp() * 1000)
     packet = {
         "event": event,
         "target": target,
         "task_text": (task_text or "").strip() or None,
         "task_id": None,
+        "event_id": f"event-{now_ms}-{EVENT_COUNTER}",
     }
     if packet["event"] == "TASK_ASSIGNED" and packet["task_text"]:
-        packet["task_id"] = f"task-{int(datetime.now().timestamp() * 1000)}"
+        packet["task_id"] = f"task-{now_ms}-{EVENT_COUNTER}"
     return packet
 
 
 def normalize_event_packet(raw_event, default_target="ALL"):
     if isinstance(raw_event, dict):
-        return make_event_packet(
+        packet = make_event_packet(
             event=raw_event.get("event", ""),
             target=str(raw_event.get("target", default_target)).upper(),
             task_text=raw_event.get("task_text"),
         )
+        packet["task_id"] = raw_event.get("task_id") or packet["task_id"]
+        packet["event_id"] = raw_event.get("event_id") or packet["event_id"]
+        return packet
 
     # Backward compatibility for any old string entries still in memory
     return make_event_packet(event=str(raw_event), target=default_target)
@@ -129,7 +138,6 @@ async function sendTask() {
   const taskInput = document.getElementById('taskInput');
   const task = taskInput.value.trim();
   const target = document.getElementById('taskTarget').value;
-
   if (!task) {
     alert('Please type a task first.');
     return;
@@ -175,7 +183,7 @@ async function refresh() {
   if (logs.length === 0) {
     document.getElementById('responsesLog').textContent = 'No responses yet.';
   } else {
-    document.getElementById('responsesLog').textContent = logs.join("\\n");
+    document.getElementById('responsesLog').textContent = logs.join("\n");
   }
 }
 
@@ -240,6 +248,7 @@ def api_poll():
             "target": packet["target"],
             "task_text": packet["task_text"],
             "task_id": packet["task_id"],
+            "event_id": packet["event_id"],
             "queue_size": len(EVENT_QUEUE),
             "left_queue_size": len(ROLE_QUEUES["LEFT"]),
             "right_queue_size": len(ROLE_QUEUES["RIGHT"]),
@@ -252,6 +261,7 @@ def api_poll():
             "target": packet["target"],
             "task_text": packet["task_text"],
             "task_id": packet["task_id"],
+            "event_id": packet["event_id"],
             "queue_size": len(EVENT_QUEUE),
             "left_queue_size": len(ROLE_QUEUES["LEFT"]),
             "right_queue_size": len(ROLE_QUEUES["RIGHT"]),
@@ -262,13 +272,14 @@ def api_poll():
         "target": None,
         "task_text": None,
         "task_id": None,
+        "event_id": None,
         "queue_size": len(EVENT_QUEUE),
         "left_queue_size": len(ROLE_QUEUES["LEFT"]),
         "right_queue_size": len(ROLE_QUEUES["RIGHT"]),
     })
 
 
-# Phone -> dashboard: send response
+# Phone -> dashboard: send response (Yes/No/Repeat/Help)
 @app.route("/api/response", methods=["POST"])
 def api_response():
     payload = request.get_json(silent=True) or {}
@@ -277,12 +288,14 @@ def api_response():
     label = payload.get("label")
     user = payload.get("user", "PHONE")
     role = str(payload.get("role", "UNASSIGNED")).upper()
+    custom_pattern = payload.get("custom_pattern")
 
     if not code and not label:
         return jsonify({"ok": False, "error": "Missing code/label"}), 400
 
     ts = datetime.now().strftime("%H:%M:%S")
-    line = f"[{role}] [{user}] {label} ({code}) @ {ts}"
+    extra = f" [pattern={custom_pattern}]" if custom_pattern else ""
+    line = f"[{role}] [{user}] {label} ({code}){extra} @ {ts}"
 
     RESPONSES_LOG.appendleft(line)
     return jsonify({"ok": True})
