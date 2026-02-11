@@ -44,10 +44,3 @@ Task Manager:
 
 ## Architecture Diagram
 <img width="7457" height="3612" alt="Diagram" src="https://github.com/user-attachments/assets/1b3d508f-8868-4306-b6bb-04d0d39e93b5" />
-
-```bash
-HOST=0.0.0.0 PORT=5002 FLASK_DEBUG=0 python uri-demo/server.py
-```
-
-
-
