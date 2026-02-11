@@ -4,7 +4,7 @@ This project focuses on using haptics for ease of communication for people with 
 
 Devices:
 1. 1 working Laptop
-2. 1 Android Phone
+2. 1 Android Phone (minimally)
 3. 1 Cable to connect said laptop and phone to transfer files
 
 Instructions on setting up:
@@ -27,7 +27,13 @@ Instructions on setting up:
 * The dashboard can send events to the Android Phone.
 * The Android Phone can be interacted with and will send responses to the dashboard.
 * They communicate via vibrations.
-* Different vibration patterns are mapped to different meaning. 
+* Different vibration patterns are mapped to different meaning.
+
+Directional haptics:
+* Install the app on 2 Android phones.
+* In each app, set one phone as **LEFT** and the other as **RIGHT** using the role buttons.
+* On the dashboard, press **Send LEFT vibration** to vibrate only the LEFT phone, or **Send RIGHT vibration** to vibrate only the RIGHT phone.
+* Existing event buttons (name called / task assigned / urgent) continue to work as shared events.
 
 ## Architecture Diagram
 <img width="7457" height="3612" alt="Diagram" src="https://github.com/user-attachments/assets/1b3d508f-8868-4306-b6bb-04d0d39e93b5" />
