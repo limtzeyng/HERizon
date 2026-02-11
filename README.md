@@ -45,3 +45,29 @@ Task Manager:
 ## Architecture Diagram
 <img width="7457" height="3612" alt="Diagram" src="https://github.com/user-attachments/assets/1b3d508f-8868-4306-b6bb-04d0d39e93b5" />
 
+
+## Backend environment
+
+For the Python dashboard backend (`uri-demo/server.py`), use a virtual environment and install dependencies:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python uri-demo/server.py
+```
+
+Optional environment variables:
+
+- `HOST` (default: `0.0.0.0`)
+- `PORT` (default: `5002`)
+- `FLASK_DEBUG` (`1`/`true` to enable debug; default: off)
+
+Example run with custom values:
+
+```bash
+HOST=0.0.0.0 PORT=5002 FLASK_DEBUG=0 python uri-demo/server.py
+```
+
+
+
